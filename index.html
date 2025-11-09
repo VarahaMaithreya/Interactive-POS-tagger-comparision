@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive POS Tagger Comparison</title>
+    <!-- Chosen Palette: Calm Harmony (Stone/Beige, Muted Blue) -->
+    <!-- Application Structure Plan: The source report is a flat list comparing 6-7 NLP tools. This SPA translates that into a user-friendly, interactive experience. The information architecture is a tab-based, single-page application. A sticky top navigation allows users to switch between a main "Overview" section and dedicated pages for each tagger (NLTK, spaCy, Stanford, etc.). The "Overview" provides a high-level, synthesized comparison (missing from the original report) via a dynamic Chart.js chart, allowing users to compare tools by key metrics (Speed, Ease of Setup) derived from the report. Each dedicated tagger page presents the tool's description, its code snippet, and an interactive "simulation" of its output, transforming the static text into an active learning experience. This non-linear, task-oriented structure is far more intuitive for understanding and comparing the tools than the original report's linear structure. -->
+    <!-- Visualization & Content Choices:
+        1.  Report Info: Implicit comparison of Speed (spaCy > TextBlob > NLTK), Setup (Stanford is complex), Use Case (NLTK for learning, spaCy for production).
+            Goal: Synthesize & Compare.
+            Viz/Presentation: Dynamic Bar Chart (Chart.js) in "Overview" section. Buttons toggle data.
+            Interaction: User clicks "Speed", "Ease of Setup", "Use Case" buttons to update the chart.
+            Justification: Provides an immediate, high-level comparison that the text-only report lacks.
+            Library: Chart.js (Canvas).
+        2.  Report Info: Static example (Sentence -> Code -> Output) for each tagger.
+            Goal: Inform & Engage.
+            Viz/Presentation: An "Interactive Example" module on each tagger's page.
+            Interaction: User clicks a "Tag It!" button. A JS function then *simulates* the tagging by dynamically rendering the pre-defined, styled output from the report.
+            Justification: This "simulated" interaction is more engaging than just reading the static output. It mimics the tool's behavior, making the concept more concrete.
+            Library: Vanilla JS (dynamically creating HTML spans).
+        3.  Report Info: NLTK POS Tagset (Table 6.4).
+            Goal: Organize & Inform.
+            Viz/Presentation: A collapsible "details" element with a responsive two-column CSS grid.
+            Justification: Hides a large, dense table by default to keep the UI clean, but makes it accessible.
+            Library: HTML/CSS.
+        4.  Report Info: Parser Outputs (pyStatParser, MaltParser).
+            Goal: Inform (on a complex topic).
+            Viz/Presentation: A formatted, pre-styled `<code>` block within a dedicated "Parsers" section.
+            Justification: The tree structure is too complex to "simulate" effectively. Presenting it cleanly as a static code block is the clearest way to show the output.
+            Library: HTML/CSS.
+        -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+    <style>
+        /* Custom styles for the interactive tag output */
+        .tag-output .token {
+            font-weight: 600;
+            color: #1e40af; /* blue-800 */
+        }
+        .tag-output .tag {
+            font-size: 0.8em;
+            font-family: monospace;
+            padding: 0.1em 0.4em;
+            border-radius: 4px;
+            background-color: #e0e7ff; /* indigo-100 */
+            color: #3730a3; /* indigo-800 */
+            margin-left: 0.25rem;
+        }
+        .tag-output .punctuation {
+            color: #6b7280; /* gray-500 */
+        }
+        .tag-output-tree {
+            font-family: monospace;
+            font-size: 0.9em;
+            line-height: 1.6;
+            white-space: pre;
+            background-color: #f3f4f6; /* gray-100 */
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        /* Chart container styling */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        stone: {
+                            50: '#fbfcfb',
+                            100: '#f5f5f4',
+                            800: '#292524',
+                        },
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                },
+            },
+        };
+    </script>
+</head>
+<body class="bg-stone-50 font-sans text-stone-800 antialiased">
+
+    <!-- Header & Navigation -->
+    <header class="sticky top-0 z-50 w-full bg-white/90 shadow-sm backdrop-blur-md">
+        <nav class="mx-auto flex max-w-6xl flex-wrap items-center justify-between p-4">
+            <h1 class="text-xl font-bold text-blue-700">POS Tagger Comparison</h1>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <button data-target="overview" class="nav-btn font-semibold text-blue-700 underline">Overview</button>
+                <button data-target="nltk" class="nav-btn text-gray-600 hover:text-blue-700">NLTK</button>
+                <button data-target="spacy" class="nav-btn text-gray-600 hover:text-blue-700">spaCy</button>
+                <button data-target="stanford" class="nav-btn text-gray-600 hover:text-blue-700">Stanford</button>
+                <button data-target="textblob" class="nav-btn text-gray-600 hover:text-blue-700">TextBlob</button>
+                <button data-target="parsers" class="nav-btn text-gray-600 hover:text-blue-700">Parsers</button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="mx-auto max-w-6xl p-4 pt-8 sm:p-8">
+
+        <!-- Overview Section -->
+        <section id="overview" class="page-section">
+            <h2 class="text-3xl font-bold tracking-tight">An Interactive Comparison of Popular POS Taggers</h2>
+            <p class="mt-4 max-w-3xl text-lg text-gray-600">
+                This application translates a static report on Part-of-Speech (POS) taggers into an interactive experience.
+                Instead of just reading, you can explore each tool, see a simulation of its output, and compare
+                their strengths at a glance. The "best" tool depends on the task, from learning (NLTK) to production (spaCy).
+            </p>
+
+            <div class="mt-12">
+                <h3 class="text-2xl font-bold">Tagger Comparison Chart</h3>
+                <p class="mt-2 text-gray-600">Toggle between metrics to see how the tools stack up (based on the report's findings).</p>
+                <div class="mt-4 flex space-x-2">
+                    <button id="btn-speed" class="chart-toggle-btn rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm">Speed</button>
+                    <button id="btn-ease" class="chart-toggle-btn rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Ease of Setup</button>
+                    <button id="btn-usecase" class="chart-toggle-btn rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-300">Use Case</button>
+                </div>
+                <div class="chart-container mt-6">
+                    <canvas id="comparisonChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- NLTK Section -->
+        <section id="nltk" class="page-section hidden">
+            <h2 class="text-3xl font-bold tracking-tight">NLTK</h2>
+            <p class="mt-4 max-w-3xl text-lg text-gray-600">
+                The Natural Language Toolkit (NLTK) is a foundational library, heavily used for building
+                programs for text analysis and education. Its POS tagger is one of the most popular for
+                getting started in NLP.
+            </p>
+            
+            <details class="mt-6 rounded-lg border border-gray-200 bg-white p-4">
+                <summary class="cursor-pointer font-medium text-blue-700">View NLTK POS Tagset (Table 6.4)</summary>
+                <div class="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 text-sm md:grid-cols-2">
+                    <p><strong>CC:</strong> coordinating conjunction</p>
+                    <p><strong>PRP$:</strong> possessive pronoun</p>
+                    <p><strong>CD:</strong> cardinal digit</p>
+                    <p><strong>RB:</strong> adverb</p>
+                    <p><strong>DT:</strong> determiner</p>
+                    <p><strong>RBR:</strong> adverb, comparative</p>
+                    <p><strong>EX:</strong> existential there</p>
+                    <p><strong>RBS:</strong> adverb, superlative</p>
+                    <p><strong>FW:</strong> foreign word</p>
+                    <p><strong>RP:</strong> particle</p>
+                    <p><strong>IN:</strong> preposition/subordinating conjunction</p>
+                    <p><strong>TO:</strong> to</p>
+                    <p><strong>JJ:</strong> adjective</p>
+                    <p><strong>UH:</strong> interjection</p>
+                    <p><strong>JJR:</strong> adjective</p>
+                    <p><strong>VB:</strong> verb, base form</p>
+                    <p><strong>JJS:</strong> adjective</p>
+                    <p><strong>VBD:</strong> verb, past tense</p>
+                    <p><strong>LS:</strong> list marker</p>
+                    <p><strong>VBG:</strong> verb, gerund/present participle</p>
+                    <p><strong>MD:</strong> modal</p>
+                    <p><strong>VBN:</strong> verb, past participle</p>
+                    <p><strong>NN:</strong> noun, singular</p>
+                    <p><strong>VBP:</strong> verb, sing, present, non-3d</p>
+                    <p><strong>NNS:</strong> noun plural</p>
+                    <p><strong>VBZ:</strong> verb, 3rd person sing, present</p>
+                    <p><strong>NNP:</strong> proper noun</p>
+                    <p><strong>WDT:</strong> wh-determiner</p>
+                    <p><strong>NNPS:</strong> proper noun</p>
+                    <p><strong>WP:</strong> wh-pronoun</p>
+                    <p><strong>PDT:</strong> predeterminer</p>
+                    <p><strong>WP$:</strong> possessive wh-pronoun</p>
+                    <p><strong>POS:</strong> possessive ending</p>
+                    <p><strong>WRB:</strong> wh-adverb</p>
+                    <p><strong>PRP:</strong> personal pronoun</p>
+                </div>
+            </details>
+
+            <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-2">
+                <!-- Interactive Example -->
+                <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                    <h3 class="text-xl font-bold">Interactive Example</h3>
+                    <p class="mt-2 text-sm text-gray-600">Simulates the output of NLTK's `pos_tag` function.</p>
+                    <div class="mt-4">
+                        <label class="font-medium">Sentence:</label>
+                        <input type="text" id="nltk-input" class="w-full rounded-md border-gray-300 bg-gray-50 p-2" value="Automatic Parts of Speech tagging is so cool!" readonly>
+                    </div>
+                    <button id="nltk-btn" class="mt-4 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">Tag It!</button>
+                    <div class="mt-4">
+                        <label class="font-medium">Output:</label>
+                        <div id="nltk-output" class="tag-output mt-2 rounded-lg bg-gray-50 p-4 text-sm">[ ]</div>
+                    </div>
+                </div>
+                <!-- Code Snippet -->
+                <div class="rounded-lg border border-gray-200 bg-gray-900 p-6 text-white shadow-sm">
+                    <h3 class="text-xl font-bold">Python Code Snippet</h3>
+                    <pre class="mt-4 overflow-x-auto text-sm">
+<span class="text-green-400">>>> import nltk</span>
+<span class="text-green-400">>>> tokens = nltk.word_tokenize(
+    'Automatic Parts of Speech tagging is so cool!')</span>
+<span class="text-green-400">>>> nltk.pos_tag(tokens)</span>
+                    </pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- spaCy Section -->
+        <section id="spacy" class="page-section hidden">
+            <h2 class="text-3xl font-bold tracking-tight">spaCy</h2>
+            <p class="mt-4 max-w-3xl text-lg text-gray-600">
+                Widely regarded as one of the most powerful and advanced libraries for industrial-strength NLP.
+                It is known for its speed, efficiency, and production-ready models.
+            </p>
+
+            <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-2">
+                <!-- Interactive Example -->
+                <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                    <h3 class="text-xl font-bold">Interactive Example</h3>
+                    <p class="mt-2 text-sm text-gray-600">Simulates the rich token output from a spaCy `Doc` object.</p>
+                    <div class="mt-4">
+                        <label class="font-medium">Sentence:</label>
+                        <input type="text" id="spacy-input" class="w-full rounded-md border-gray-300 bg-gray-50 p-2" value="Hi, I am Spacy. I can perform POS tagging, Tokenization, etc." readonly>
+                    </div>
+                    <button id="spacy-btn" class="mt-4 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">Tag It!</button>
+                    <div class="mt-4">
+                        <label class="font-medium">Output (Token.text, Token.pos_, Token.tag_):</label>
+                        <div id="spacy-output" class="tag-output mt-2 space-y-2 rounded-lg bg-gray-50 p-4 text-sm"></div>
+                    </div>
+                </div>
+                <!-- Code Snippet -->
+                <div class="rounded-lg border border-gray-200 bg-gray-900 p-6 text-white shadow-sm">
+                    <h3 class="text-xl font-bold">Python Code Snippet</h3>
+                    <pre class="mt-4 overflow-x-auto text-sm">
+<span class="text-green-400">import spacy</span>
+<span class="text-green-400">nlp = spacy.load('en_core_web_sm')</span>
+<span class="text-green-400">res = nlp(u'Hi, I am Spacy. I can perform
+    POS tagging, Tokenization, Lemmatizing,
+    Dependency Parsing, Named Entity
+    Representation, etc.')</span>
+<span class="text-green-400">for token in res:</span>
+<span class="text-green-400">    print(token.text, token.pos_,
+        token.tag_)</span>
+                    </pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stanford POS Tagger Section -->
+        <section id="stanford" class="page-section hidden">
+            <h2 class="text-3xl font-bold tracking-tight">Stanford POS Tagger</h2>
+            <p class="mt-4 max-w-3xl text-lg text-gray-600">
+                Considered by many to be the most widely used and accurate POS tagger, serving as an
+                academic and research benchmark. Its setup is more complex as it's a Java-based tool.
+            </p>
+
+            <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-2">
+                <!-- Interactive Example -->
+                <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                    <h3 class="text-xl font-bold">Interactive Example</h3>
+                    <p class="mt-2 text-sm text-gray-600">Simulates the output of the StanfordTagger NLTK wrapper.</p>
+                    <div class="mt-4">
+                        <label class="font-medium">Sentence:</label>
+                        <input type="text" id="stanford-input" class="w-full rounded-md border-gray-300 bg-gray-50 p-2" value="What in the earth are parts of speech tags?" readonly>
+                    </div>
+                    <button id="stanford-btn" class="mt-4 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">Tag It!</button>
+                    <div class="mt-4">
+                        <label class="font-medium">Output:</label>
+                        <div id="stanford-output" class="tag-output mt-2 rounded-lg bg-gray-50 p-4 text-sm">[ ]</div>
+                    </div>
+                </div>
+                <!-- Code Snippet -->
+                <div class="rounded-lg border border-gray-200 bg-gray-900 p-6 text-white shadow-sm">
+                    <h3 class="text-xl font-bold">Python Code Snippet</h3>
+                    <pre class="mt-4 overflow-x-auto text-sm">
+<span class="text-green-400">from nltk.tag.stanford import StanfordTagger</span>
+<span class="text-green-400">sample = 'What in the earth are parts
+    of speech tags?'</span>
+<span class="text-green-400">tok = sample.split()</span>
+<span class="text-green-400">model_file = '/path/to/model.tagger'</span>
+<span class="text-green-400">model_jar = '/path/to/stanford-postagger.jar'</span>
+<span class="text-green-400">model_tagger = StanfordTagger(model_file,
+    path_to_jar = model_jar,
+    encoding = 'UTF-8')</span>
+<span class="text-green-400">print(model_tagger.tag(tok))</span>
+                    </pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- TextBlob Section -->
+        <section id="textblob" class="page-section hidden">
+            <h2 class="text-3xl font-bold tracking-tight">TextBlob</h2>
+            <p class="mt-4 max-w-3xl text-lg text-gray-600">
+                TextBlob is a Python library that offers a simple API for common NLP tasks.
+                It's built on the "giant shoulders of NLTK" and provides a very
+                user-friendly experience, with objects that behave like Python strings.
+            </p>
+
+            <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-2">
+                <!-- Interactive Example -->
+                <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                    <h3 class="text-xl font-bold">Interactive Example</h3>
+                    <p class="mt-2 text-sm text-gray-600">Simulates the output of TextBlob's `.tags` property.</p>
+                    <div class="mt-4">
+                        <label class="font-medium">Sentence:</label>
+                        <input type="text" id="textblob-input" class="w-full rounded-md border-gray-300 bg-gray-50 p-2" value="TextBlob is also a good parts of speech tagger." readonly>
+                    </div>
+                    <button id="textblob-btn" class="mt-4 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700">Tag It!</button>
+                    <div class="mt-4">
+                        <label class="font-medium">Output:</label>
+                        <div id="textblob-output" class="tag-output mt-2 rounded-lg bg-gray-50 p-4 text-sm">[ ]</div>
+                    </div>
+                </div>
+                <!-- Code Snippet -->
+                <div class="rounded-lg border border-gray-200 bg-gray-900 p-6 text-white shadow-sm">
+                    <h3 class="text-xl font-bold">Python Code Snippet</h3>
+                    <pre class="mt-4 overflow-x-auto text-sm">
+<span class="text-green-400">>>> from textblob import TextBlob</span>
+<span class="text-green-400">>>> test = TextBlob(
+    'TextBlob is also a good parts of speech tagger.')</span>
+<span class="text-green-400">>>> test.tags</span>
+                    </pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Parsers Section -->
+        <section id="parsers" class="page-section hidden">
+            <h2 class="text-3xl font-bold tracking-tight">Dependency Parsers (pyStatParser & MaltParser)</h2>
+            <p class="mt-4 max-w-3xl text-lg text-gray-600">
+                These tools go beyond simple tagging. They perform dependency parsing, which
+                analyzes the grammatical structure of a sentence and returns a full parse tree,
+                showing how words relate to each other.
+            </p>
+
+            <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-2">
+                <!-- pyStatParser -->
+                <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                    <h3 class="text-xl font-bold">pyStatParser</h3>
+                    <p class="mt-2 text-sm text-gray-600">
+                        A simple statistical parser that returns NLTK-compatible parse trees.
+                        It uses a CKY algorithm.
+                    </p>
+                    <div class="mt-4">
+                        <label class="font-medium">Sentence:</label>
+                        <p class="mt-1 text-gray-800">"How can the net amount of entropy of the universe be massively decreased?"</p>
+                    </div>
+                    <div class="mt-4">
+                        <label class="font-medium">Output (Parse Tree):</label>
+                        <code id="pystat-output" class="tag-output-tree mt-2 block">
+(SBARQ
+  (WHADVP (WRB how))
+  (SQ
+    (MD can)
+    (NP
+      (NP (DT the) (JJ net) (NN amount))
+      (PP
+        (IN of)
+        (NP
+          (NP (NNS entropy))
+          (PP (IN of) (NP (DT the) (NN universe))))))
+    (VP (VB be) (ADJP (RB massively) (VBN decreased))))
+  (. ?))
+                        </code>
+                    </div>
+                </div>
+                <!-- MaltParser -->
+                <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                    <h3 class="text-xl font-bold">MaltParser</h3>
+                    <p class="mt-2 text-sm text-gray-600">
+                        A framework for data-driven dependency parsing that can be trained
+                        on treebank data.
+                    </p>
+                    <div class="mt-4">
+                        <label class="font-medium">Sentence:</label>
+                        <p class="mt-1 text-gray-800">"Yet another Parts of Speech tagger. I am loving it."</p>
+                    </div>
+                    <div class="mt-4">
+                        <label class="font-medium">Output (Parse Tree):</label>
+                        <code id="malt-output" class="tag-output-tree mt-2 block">
+(it. (tagger. Yet another Parts of Speech) I am loving)
+                        </code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- Data for Tagger Simulation ---
+            const taggerData = {
+                nltk: [
+                    ['Automatic', 'JJ'], ['Parts', 'NNS'], ['of', 'IN'], ['Speech', 'NNP'],
+                    ['tagging', 'NN'], ['is', 'VBZ'], ['so', 'RB'], ['cool', 'JJ'], ['!', '.']
+                ],
+                stanford: [
+                    ['What', 'WP'], ['in', 'IN'], ['the', 'DT'], ['earth', 'NN'], ['are', 'VBP'],
+                    ['parts', 'NNS'], ['of', 'IN'], ['speech', 'NN'], ['tags', 'NNS'], ['?', '.']
+                ],
+                textblob: [
+                    ['TextBlob', 'NNP'], ['is', 'VBZ'], ['also', 'RB'], ['a', 'DT'], ['good', 'JJ'],
+                    ['parts', 'NNS'], ['of', 'IN'], ['speech', 'NN'], ['tagger', 'NN'], ['.', '.']
+                ],
+                spacy: [
+                    ['Hi', 'INTJ', 'UH'], [',', 'PUNCT', ','], ['I', 'PRON', 'PRP'], ['am', 'VERB', 'VBP'],
+                    ['Spacy', 'PROPN', 'NNP'], ['.', 'PUNCT', '.'], ['I', 'PRON', 'PRP'], ['can', 'VERB', 'MD'],
+                    ['perform', 'VERB', 'VB'], ['POS', 'PROPN', 'NNP'], ['tagging', 'VERB', 'VBG'],
+                    [',', 'PUNCT', ','], ['Tokenization', 'PROPN', 'NNP'], [',', 'PUNCT', ','],
+                    ['etc', 'X', 'FW'], ['.', 'PUNCT', '.']
+                ]
+            };
+
+            // --- Simulation Logic ---
+
+            function formatTagOutput(data) {
+                const parts = data.map(item => {
+                    const token = item[0].replace(/'/g, "&apos;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    const tag = item[1].replace(/'/g, "&apos;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    const isPunct = (item[0] === ',' || item[0] === '.' || item[0] === '!' || item[0] === '?');
+                    const tokenClass = isPunct ? 'punctuation' : 'token';
+                    return `(<span class="${tokenClass}">'${token}'</span>, <span class="tag tag-${tag.toLowerCase()}">'${tag}'</span>)`;
+                });
+                return `[ ${parts.join(', ')} ]`;
+            }
+
+            function formatSpaCyOutput(data) {
+                return data.map(item => {
+                    const token = item[0].replace(/'/g, "&apos;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    const pos = item[1].replace(/'/g, "&apos;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    const tag = item[2].replace(/'/g, "&apos;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    const isPunct = (pos === 'PUNCT');
+                    const tokenClass = isPunct ? 'punctuation' : 'token';
+                    
+                    return `<div><span class="${tokenClass} w-24 inline-block">${token}</span> <span class="tag tag-pos">${pos}</span> <span class="tag tag-tag">${tag}</span></div>`;
+                }).join('');
+            }
+            
+            document.getElementById('nltk-btn').addEventListener('click', () => {
+                document.getElementById('nltk-output').innerHTML = formatTagOutput(taggerData.nltk);
+            });
+            
+            document.getElementById('stanford-btn').addEventListener('click', () => {
+                document.getElementById('stanford-output').innerHTML = formatTagOutput(taggerData.stanford);
+            });
+
+            document.getElementById('textblob-btn').addEventListener('click', () => {
+                document.getElementById('textblob-output').innerHTML = formatTagOutput(taggerData.textblob);
+            });
+
+            document.getElementById('spacy-btn').addEventListener('click', () => {
+                document.getElementById('spacy-output').innerHTML = formatSpaCyOutput(taggerData.spacy);
+            });
+
+            // --- Navigation Logic ---
+            const navButtons = document.querySelectorAll('.nav-btn');
+            const pageSections = document.querySelectorAll('.page-section');
+
+            navButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const targetId = btn.getAttribute('data-target');
+
+                    pageSections.forEach(section => {
+                        if (section.id === targetId) {
+                            section.classList.remove('hidden');
+                        } else {
+                            section.classList.add('hidden');
+                        }
+                    });
+
+                    navButtons.forEach(navBtn => {
+                        if (navBtn.getAttribute('data-target') === targetId) {
+                            navBtn.classList.add('font-semibold', 'text-blue-700', 'underline');
+                            navBtn.classList.remove('text-gray-600', 'hover:text-blue-700');
+                        } else {
+                            navBtn.classList.remove('font-semibold', 'text-blue-700', 'underline');
+                            navBtn.classList.add('text-gray-600', 'hover:text-blue-700');
+                        }
+                    });
+
+                    window.scrollTo(0, 0);
+                });
+            });
+
+            // --- Chart.js Logic ---
+            const chartData = {
+                labels: ['NLTK', 'spaCy', 'Stanford', 'TextBlob'],
+                datasets: {
+                    speed: {
+                        label: 'Relative Speed',
+                        data: [3, 10, 6, 8], // NLTK < TextBlob < Stanford < spaCy
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                    },
+                    ease: {
+                        label: 'Ease of Setup (Higher is Easier)',
+                        data: [8, 7, 2, 10], // Stanford (Java) is hardest. TextBlob is easiest.
+                        backgroundColor: 'rgba(16, 185, 129, 0.7)',
+                    },
+                    usecase: {
+                        label: 'Use Case (1=Learn, 10=Product)',
+                        data: [3, 10, 8, 2], // NLTK/TextBlob for learning, spaCy/Stanford for production
+                        backgroundColor: 'rgba(234, 179, 8, 0.7)',
+                    }
+                }
+            };
+
+            const ctx = document.getElementById('comparisonChart').getContext('2d');
+            let myChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [chartData.datasets.speed]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.x !== null) {
+                                        label += context.parsed.x;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            max: 10,
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+
+            const chartToggleButtons = document.querySelectorAll('.chart-toggle-btn');
+            
+            function updateChart(datasetKey) {
+                myChart.data.datasets[0] = chartData.datasets[datasetKey];
+                myChart.update();
+
+                chartToggleButtons.forEach(btn => {
+                    const isActive = btn.id === `btn-${datasetKey}`;
+                    btn.classList.toggle('bg-blue-600', isActive);
+                    btn.classList.toggle('text-white', isActive);
+                    btn.classList.toggle('bg-gray-200', !isActive);
+                    btn.classList.toggle('text-gray-700', !isActive);
+                    btn.classList.toggle('hover:bg-gray-300', !isActive);
+                });
+            }
+
+            document.getElementById('btn-speed').addEventListener('click', () => updateChart('speed'));
+            document.getElementById('btn-ease').addEventListener('click', () => updateChart('ease'));
+            document.getElementById('btn-usecase').addEventListener('click', () => updateChart('usecase'));
+        });
+    </script>
+</body>
+</html>
